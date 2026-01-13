@@ -417,7 +417,7 @@ local function main()
 
         -- Curve editor
         local avail_w = r.ImGui_GetContentRegionAvail(ctx)
-        local editor_h = 200
+        local editor_h = 150
         local interacted = draw_curve_editor(ctx, avail_w, editor_h)
 
         if interacted then
