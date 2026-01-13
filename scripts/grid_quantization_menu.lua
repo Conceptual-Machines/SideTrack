@@ -133,9 +133,9 @@ end
 local function main()
   local menu_str = build_menu()
 
-  -- Show menu at mouse position
+  -- Show menu at mouse position (use dock=-1 to hide the gfx window)
   local x, y = reaper.GetMousePosition()
-  gfx.init("", 0, 0, 0, x, y)
+  gfx.init("", 0, 0, -1, x, y)
 
   local selection = gfx.showmenu(menu_str)
   gfx.quit()

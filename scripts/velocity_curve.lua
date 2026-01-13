@@ -402,6 +402,7 @@ local function main()
         state.preview_velocities = {}
     end
 
+    r.ImGui_SetNextWindowSize(ctx, 350, 320, r.ImGui_Cond_FirstUseEver())
     local visible, open = r.ImGui_Begin(ctx, 'Velocity Curve Editor', true, WINDOW_FLAGS)
 
     if visible then
