@@ -1,5 +1,5 @@
 -- @description Grid Quantization Menu
--- @version 1.0.0
+-- @version 1.1.0
 -- @author SideTrack
 -- @about
 --   Quick access popup menu for grid quantization settings.
@@ -7,16 +7,15 @@
 
 local reaper = reaper
 
--- Grid division values (in quarter notes)
--- REAPER uses: 1 = quarter note, 0.5 = eighth, 0.25 = sixteenth, etc.
+-- Grid division values (in fractions of a bar/measure)
 local GRID_DIVISIONS = {
-  { label = "1 Bar",        value = 4.0,      triplet = 4.0 * 2/3,      dotted = 4.0 * 1.5 },
-  { label = "1/2",          value = 2.0,      triplet = 2.0 * 2/3,      dotted = 2.0 * 1.5 },
-  { label = "1/4",          value = 1.0,      triplet = 1.0 * 2/3,      dotted = 1.0 * 1.5 },
-  { label = "1/8",          value = 0.5,      triplet = 0.5 * 2/3,      dotted = 0.5 * 1.5 },
-  { label = "1/16",         value = 0.25,     triplet = 0.25 * 2/3,     dotted = 0.25 * 1.5 },
-  { label = "1/32",         value = 0.125,    triplet = 0.125 * 2/3,    dotted = 0.125 * 1.5 },
-  { label = "1/64",         value = 0.0625,   triplet = 0.0625 * 2/3,   dotted = 0.0625 * 1.5 },
+  { label = "1 Bar",  value = 1.0 },
+  { label = "1/2",    value = 0.5 },
+  { label = "1/4",    value = 0.25 },
+  { label = "1/8",    value = 0.125 },
+  { label = "1/16",   value = 0.0625 },
+  { label = "1/32",   value = 0.03125 },
+  { label = "1/64",   value = 0.015625 },
 }
 
 -- Get current grid division
@@ -36,111 +35,74 @@ local function values_match(a, b)
   return math.abs(a - b) < 0.0001
 end
 
--- Build menu string
+-- Build menu and action list
 local function build_menu()
   local current = get_current_grid()
-  local menu_items = {}
+  local menu_parts = {}
+  local actions = {}  -- Parallel list of actions
 
-  -- Header
-  table.insert(menu_items, "#Grid Division|")
-
-  -- Standard divisions
-  table.insert(menu_items, ">Standard")
+  -- Standard divisions submenu
+  menu_parts[#menu_parts + 1] = ">Standard"
   for _, div in ipairs(GRID_DIVISIONS) do
     local checked = values_match(current, div.value) and "!" or ""
-    table.insert(menu_items, checked .. div.label)
+    menu_parts[#menu_parts + 1] = checked .. div.label
+    actions[#actions + 1] = { type = "grid", value = div.value }
   end
-  table.insert(menu_items, "<|")
+  menu_parts[#menu_parts + 1] = "<"
 
-  -- Triplet divisions
-  table.insert(menu_items, ">Triplet")
+  -- Triplet divisions submenu
+  menu_parts[#menu_parts + 1] = ">Triplet"
   for _, div in ipairs(GRID_DIVISIONS) do
-    local checked = values_match(current, div.triplet) and "!" or ""
-    table.insert(menu_items, checked .. div.label .. " T")
+    local triplet_val = div.value * 2/3
+    local checked = values_match(current, triplet_val) and "!" or ""
+    menu_parts[#menu_parts + 1] = checked .. div.label .. " T"
+    actions[#actions + 1] = { type = "grid", value = triplet_val }
   end
-  table.insert(menu_items, "<|")
+  menu_parts[#menu_parts + 1] = "<"
 
-  -- Dotted divisions
-  table.insert(menu_items, ">Dotted")
+  -- Dotted divisions submenu
+  menu_parts[#menu_parts + 1] = ">Dotted"
   for _, div in ipairs(GRID_DIVISIONS) do
-    local checked = values_match(current, div.dotted) and "!" or ""
-    table.insert(menu_items, checked .. div.label .. " .")
+    local dotted_val = div.value * 1.5
+    local checked = values_match(current, dotted_val) and "!" or ""
+    menu_parts[#menu_parts + 1] = checked .. div.label .. " ."
+    actions[#actions + 1] = { type = "grid", value = dotted_val }
   end
-  table.insert(menu_items, "<|")
+  menu_parts[#menu_parts + 1] = "<"
 
-  -- Separator and snap toggle
-  table.insert(menu_items, "|")
-  local snap_enabled = reaper.GetToggleCommandState(1157) == 1  -- Toggle snap
+  -- Separator
+  menu_parts[#menu_parts + 1] = ""
+
+  -- Snap toggle
+  local snap_enabled = reaper.GetToggleCommandState(1157) == 1
   local snap_check = snap_enabled and "!" or ""
-  table.insert(menu_items, snap_check .. "Snap Enabled")
+  menu_parts[#menu_parts + 1] = snap_check .. "Snap Enabled"
+  actions[#actions + 1] = { type = "snap" }
 
-  return table.concat(menu_items, "|")
-end
-
--- Parse menu selection and apply
-local function handle_selection(selection)
-  if selection <= 0 then return end
-
-  -- Account for header (item 1)
-  local adjusted = selection - 1
-
-  -- Standard submenu: items 2-8 (indices 1-7 after header)
-  -- Triplet submenu: items 10-16
-  -- Dotted submenu: items 18-24
-  -- Snap toggle: item 26
-
-  local num_divisions = #GRID_DIVISIONS
-
-  -- Submenu structure:
-  -- 1 = header
-  -- 2 = ">Standard" opener
-  -- 3-9 = standard divisions (7 items)
-  -- 10 = "<" closer + separator
-  -- 11 = ">Triplet" opener
-  -- 12-18 = triplet divisions
-  -- 19 = "<" closer + separator
-  -- 20 = ">Dotted" opener
-  -- 21-27 = dotted divisions
-  -- 28 = "<" closer + separator
-  -- 29 = separator
-  -- 30 = Snap toggle
-
-  if adjusted >= 2 and adjusted <= 2 + num_divisions - 1 then
-    -- Standard division selected
-    local idx = adjusted - 2 + 1
-    if GRID_DIVISIONS[idx] then
-      set_grid(GRID_DIVISIONS[idx].value)
-    end
-  elseif adjusted >= 2 + num_divisions + 2 and adjusted <= 2 + num_divisions + 2 + num_divisions - 1 then
-    -- Triplet division selected
-    local idx = adjusted - (2 + num_divisions + 2) + 1
-    if GRID_DIVISIONS[idx] then
-      set_grid(GRID_DIVISIONS[idx].triplet)
-    end
-  elseif adjusted >= 2 + 2*num_divisions + 4 and adjusted <= 2 + 2*num_divisions + 4 + num_divisions - 1 then
-    -- Dotted division selected
-    local idx = adjusted - (2 + 2*num_divisions + 4) + 1
-    if GRID_DIVISIONS[idx] then
-      set_grid(GRID_DIVISIONS[idx].dotted)
-    end
-  elseif adjusted == 2 + 3*num_divisions + 7 then
-    -- Snap toggle
-    reaper.Main_OnCommand(1157, 0)  -- Toggle snap
-  end
+  return table.concat(menu_parts, "|"), actions
 end
 
 -- Main
 local function main()
-  local menu_str = build_menu()
+  local menu_str, actions = build_menu()
 
-  -- Show menu at mouse position (use dock=-1 to hide the gfx window)
+  -- Show menu at mouse position (position tiny window off-screen)
   local x, y = reaper.GetMousePosition()
-  gfx.init("", 0, 0, -1, x, y)
+  gfx.init("", 1, 1, 0, x, y - 1000)
+  gfx.x, gfx.y = gfx.screentoclient(x, y)
 
   local selection = gfx.showmenu(menu_str)
   gfx.quit()
 
-  handle_selection(selection)
+  -- Handle selection
+  if selection > 0 and actions[selection] then
+    local action = actions[selection]
+    if action.type == "grid" then
+      set_grid(action.value)
+    elseif action.type == "snap" then
+      reaper.Main_OnCommand(1157, 0)  -- Toggle snap
+    end
+  end
 end
 
 main()
