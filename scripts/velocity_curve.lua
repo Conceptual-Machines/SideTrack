@@ -113,7 +113,7 @@ local function get_selected_notes(take)
     local _, note_count = r.MIDI_CountEvts(take)
 
     for i = 0, note_count - 1 do
-        local retval, selected, muted, startppq, endppq, chan, pitch, vel = r.MIDI_GetNote(take, i)
+        local _, selected, muted, startppq, endppq, chan, pitch, vel = r.MIDI_GetNote(take, i)
         if selected then
             table.insert(notes, {
                 idx = i,
@@ -319,7 +319,6 @@ local function draw_curve_editor(ctx, width, height)
 
     -- Drag node
     if state.drag_node > 0 and left_down then
-        local pt = state.points[state.drag_node]
         local sorted = sort_points_by_x(state.points)
         local is_left_endpoint = sorted[1].orig_idx == state.drag_node
         local is_right_endpoint = sorted[#sorted].orig_idx == state.drag_node
