@@ -132,6 +132,9 @@ function MidiOutput.get_selected_midi_take()
   return nil
 end
 
+-- MIDI output mode: 0=VKB, 1=control/track input, 2=hardware output
+local MIDI_MODE = 1
+
 -- Preview note (trigger MIDI output)
 function MidiOutput.preview_note(pitch, vel, channel, duration_ms)
   vel = vel or 100
@@ -139,13 +142,13 @@ function MidiOutput.preview_note(pitch, vel, channel, duration_ms)
   duration_ms = duration_ms or 200
 
   -- Note on
-  r.StuffMIDIMessage(0, 0x90 + channel, pitch, vel)
+  r.StuffMIDIMessage(MIDI_MODE, 0x90 + channel, pitch, vel)
 
   -- Schedule note off (using defer)
   local start_time = r.time_precise()
   local function check_off()
     if (r.time_precise() - start_time) * 1000 >= duration_ms then
-      r.StuffMIDIMessage(0, 0x80 + channel, pitch, 0)
+      r.StuffMIDIMessage(MIDI_MODE, 0x80 + channel, pitch, 0)
     else
       r.defer(check_off)
     end
@@ -153,10 +156,27 @@ function MidiOutput.preview_note(pitch, vel, channel, duration_ms)
   r.defer(check_off)
 end
 
--- Preview pattern (simple playback)
+-- Send note on (for live playback)
+function MidiOutput.note_on(pitch, vel, channel)
+  vel = vel or 100
+  channel = channel or 0
+  r.StuffMIDIMessage(MIDI_MODE, 0x90 + channel, pitch, vel)
+end
+
+-- Send note off
+function MidiOutput.note_off(pitch, channel)
+  channel = channel or 0
+  r.StuffMIDIMessage(MIDI_MODE, 0x80 + channel, pitch, 0)
+end
+
+-- Playback state reference (set by main script)
+MidiOutput.playback_state = nil
+
+-- Preview pattern with playhead
 function MidiOutput.preview_pattern(pattern, bpm)
   bpm = bpm or r.Master_GetTempo()
   local sec_per_bar = 4 * 60 / bpm
+  local pattern_length = pattern.length_bars
 
   -- Sort notes by start time
   local sorted = {}
@@ -167,28 +187,60 @@ function MidiOutput.preview_pattern(pattern, bpm)
   end
   table.sort(sorted, function(a, b) return a.start < b.start end)
 
-  -- Schedule notes
+  -- Set playback state
   local start_time = r.time_precise()
   local note_idx = 1
 
-  local function play_next()
-    if note_idx > #sorted then return end
-
-    local now = r.time_precise() - start_time
-    local note = sorted[note_idx]
-    local note_time = pattern:apply_swing(note.start) * sec_per_bar
-
-    if now >= note_time then
-      MidiOutput.preview_note(note.pitch, note.vel, pattern.channel, note.length * sec_per_bar * 1000)
-      note_idx = note_idx + 1
-    end
-
-    if note_idx <= #sorted then
-      r.defer(play_next)
-    end
+  if MidiOutput.playback_state then
+    MidiOutput.playback_state.playing = true
+    MidiOutput.playback_state.start_time = start_time
+    MidiOutput.playback_state.position = 0
   end
 
-  r.defer(play_next)
+  local function play_loop()
+    local now = r.time_precise() - start_time
+    local position_bars = now / sec_per_bar
+
+    -- Update playhead position
+    if MidiOutput.playback_state then
+      MidiOutput.playback_state.position = position_bars
+    end
+
+    -- Check if pattern finished
+    if position_bars >= pattern_length then
+      if MidiOutput.playback_state then
+        MidiOutput.playback_state.playing = false
+        MidiOutput.playback_state.position = 0
+      end
+      return
+    end
+
+    -- Play notes that are due
+    while note_idx <= #sorted do
+      local note = sorted[note_idx]
+      local note_time = pattern:apply_swing(note.start) * sec_per_bar
+
+      if now >= note_time then
+        local dur_ms = note.length * sec_per_bar * 1000
+        MidiOutput.preview_note(note.pitch, note.vel, pattern.channel, dur_ms)
+        note_idx = note_idx + 1
+      else
+        break
+      end
+    end
+
+    r.defer(play_loop)
+  end
+
+  r.defer(play_loop)
+end
+
+-- Stop playback
+function MidiOutput.stop_playback()
+  if MidiOutput.playback_state then
+    MidiOutput.playback_state.playing = false
+    MidiOutput.playback_state.position = 0
+  end
 end
 
 return MidiOutput

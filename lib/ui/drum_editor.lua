@@ -13,6 +13,9 @@ local ROW_H = 24
 local CELL_W = 28
 local HEADER_H = 24
 
+-- Click debounce threshold (seconds)
+local CLICK_DEBOUNCE = 0.1
+
 function DrumEditor.draw()
   local ctx = State.ctx
   local pattern = State.get_pattern()
@@ -129,21 +132,50 @@ function DrumEditor.draw()
   -- Border
   r.ImGui_DrawList_AddRect(draw_list, grid_x, grid_y, grid_x + grid_w, grid_y + grid_h, Colors.grid_beat)
 
-  -- Handle clicks
-  if is_hovered and State.drums.hover_row > 0 and State.drums.hover_col >= 0 then
-    local drum = pattern.drum_map[State.drums.hover_row]
+  -- Draw playhead if playing
+  if State.playback.playing then
+    local playhead_step = State.playback.position / pattern.grid_division
+    local playhead_x = grid_x + playhead_step * CELL_W
+    if playhead_x >= grid_x and playhead_x <= grid_x + grid_w then
+      r.ImGui_DrawList_AddLine(draw_list, playhead_x, cursor_y, playhead_x, grid_y + grid_h,
+        Colors.playhead, 2)
+    end
+  end
 
-    if is_clicked then
-      local idx = pattern:toggle_note(drum.pitch, State.drums.hover_col, 100)
-      if idx then
-        MidiOutput.preview_note(drum.pitch, 100, pattern.channel, 150)
-      end
-    elseif is_right_clicked then
-      local vel_idx, note = pattern:get_note_at_grid(drum.pitch, State.drums.hover_col)
-      if note then
-        local new_vel = note.vel <= 40 and 100 or note.vel - 20
-        pattern:set_velocity(vel_idx, new_vel)
-        MidiOutput.preview_note(drum.pitch, new_vel, pattern.channel, 150)
+  -- Handle clicks - calculate cell directly from mouse position
+  local now = r.time_precise()
+  if is_hovered and (is_clicked or is_right_clicked) then
+    -- Calculate which cell was clicked from mouse position
+    local click_col = math.floor((mouse_x - grid_x) / CELL_W)
+    local click_row = math.floor((mouse_y - grid_y) / ROW_H) + 1
+
+    -- Validate bounds
+    if click_col >= 0 and click_col < grid_steps and
+       click_row >= 1 and click_row <= num_rows then
+      local drum = pattern.drum_map[click_row]
+
+      if is_clicked then
+        -- Check debounce: same cell clicked too fast?
+        local same_cell = State.drums.last_click_row == click_row and
+                          State.drums.last_click_col == click_col
+        local too_fast = (now - State.drums.last_click_time) < CLICK_DEBOUNCE
+
+        if not (same_cell and too_fast) then
+          local idx = pattern:toggle_note(drum.pitch, click_col, 100)
+          if idx then
+            MidiOutput.preview_note(drum.pitch, 100, pattern.channel, 150)
+          end
+          State.drums.last_click_time = now
+          State.drums.last_click_row = click_row
+          State.drums.last_click_col = click_col
+        end
+      elseif is_right_clicked then
+        local vel_idx, note = pattern:get_note_at_grid(drum.pitch, click_col)
+        if note then
+          local new_vel = note.vel <= 40 and 100 or note.vel - 20
+          pattern:set_velocity(vel_idx, new_vel)
+          MidiOutput.preview_note(drum.pitch, new_vel, pattern.channel, 150)
+        end
       end
     end
   end

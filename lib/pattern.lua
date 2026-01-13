@@ -90,22 +90,30 @@ end
 -- Toggle note at grid position (for drum editor)
 function Pattern:toggle_note(pitch, grid_pos, vel)
   vel = vel or 100
-  local start = grid_pos * self.grid_division
-  local idx = self:find_note_at(pitch, start, self.grid_division * 0.5)
+  local idx = self:get_note_at_grid(pitch, grid_pos)
 
   if idx then
     self:remove_note(idx)
     return nil
   else
+    local start = grid_pos * self.grid_division
     return self:add_note(pitch, start, self.grid_division, vel)
   end
 end
 
--- Get note at grid position
+-- Get note at grid position (checks if note START is at this grid cell)
 function Pattern:get_note_at_grid(pitch, grid_pos)
-  local start = grid_pos * self.grid_division
-  local idx, note = self:find_note_at(pitch, start, self.grid_division * 0.5)
-  return idx, note
+  local cell_start = grid_pos * self.grid_division
+  local cell_end = cell_start + self.grid_division
+  -- Find note whose start falls within this cell
+  for i, note in ipairs(self.notes) do
+    if note.pitch == pitch then
+      if note.start >= cell_start and note.start < cell_end then
+        return i, note
+      end
+    end
+  end
+  return nil
 end
 
 -- Set note velocity

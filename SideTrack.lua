@@ -39,6 +39,9 @@ State.init()
 --------------------------------------------------------------------------------
 
 local function main()
+  -- Sync playhead to REAPER transport
+  State.update_playback()
+
   local pattern = State.get_pattern()
 
   r.ImGui_SetNextWindowSize(ctx, 700, 500, r.ImGui_Cond_FirstUseEver())
@@ -86,10 +89,8 @@ local function main()
     r.ImGui_SameLine(ctx)
     if r.ImGui_Button(ctx, "Steps", 60, 0) then State.view = "steps" end
 
-    r.ImGui_SameLine(ctx, r.ImGui_GetContentRegionAvail(ctx) - 200)
+    r.ImGui_SameLine(ctx, r.ImGui_GetContentRegionAvail(ctx) - 60)
     if r.ImGui_Button(ctx, "Clear", 50, 0) then pattern:clear() end
-    r.ImGui_SameLine(ctx)
-    if r.ImGui_Button(ctx, "Preview", 60, 0) then MidiOutput.preview_pattern(pattern) end
 
     r.ImGui_Spacing(ctx)
 

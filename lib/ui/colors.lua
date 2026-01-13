@@ -26,6 +26,9 @@ local Colors = {
   button_active = 0x5B9FD4FF,
   velocity_bar = 0xFFAA22FF,
 
+  -- Playhead
+  playhead = 0xFF6644FF,
+
   -- Piano roll
   piano_white = 0xE8E8E8FF,
   piano_black = 0x2A2A2AFF,
