@@ -4,6 +4,7 @@
 globals = {
     "reaper",
     "gfx",
+    "package",  -- Need write access for package.path
 }
 
 -- Read-only globals
@@ -19,7 +20,6 @@ read_globals = {
     "print",
     "pcall",
     "require",
-    "package",
     "error",
     "assert",
 }
