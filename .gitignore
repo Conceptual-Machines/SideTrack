@@ -1,0 +1,14 @@
+# macOS
+.DS_Store
+._*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Lua
+*.luac
+
+# Local testing
+.claude/
