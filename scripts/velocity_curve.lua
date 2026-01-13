@@ -8,8 +8,7 @@
 local r = reaper
 
 -- Check for ReaImGui
-local has_imgui, imgui = pcall(require, 'imgui')
-if not has_imgui then
+if not r.ImGui_CreateContext then
     r.ShowMessageBox("ReaImGui is required for this script.\nInstall via ReaPack.", "SideTrack", 0)
     return
 end
