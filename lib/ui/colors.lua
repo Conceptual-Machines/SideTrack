@@ -29,6 +29,11 @@ local Colors = {
   -- Playhead
   playhead = 0xFF6644FF,
 
+  -- Selection
+  selection_fill = 0x5B9FD440,  -- Semi-transparent
+  selection_border = 0x5B9FD4FF,
+  cell_selected = 0x8BC4F0FF,
+
   -- Piano roll
   piano_white = 0xE8E8E8FF,
   piano_black = 0x2A2A2AFF,

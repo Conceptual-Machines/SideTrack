@@ -152,6 +152,101 @@ function Pattern:clear()
   self.notes = {}
 end
 
+-- Get pitch for a drum row index
+function Pattern:get_pitch_for_row(row)
+  if self.drum_map[row] then
+    return self.drum_map[row].pitch
+  end
+  return nil
+end
+
+-- Get row index for a pitch
+function Pattern:get_row_for_pitch(pitch)
+  for row, drum in ipairs(self.drum_map) do
+    if drum.pitch == pitch then
+      return row
+    end
+  end
+  return nil
+end
+
+-- Move selected notes by row/col delta
+-- selected_notes: {[idx] = true} table
+-- Returns new selection table with updated indices
+function Pattern:move_notes(selected_notes, row_delta, col_delta)
+  local time_delta = col_delta * self.grid_division
+  local notes_to_move = {}
+
+  -- Collect notes to move (in reverse order for safe removal)
+  for idx, _ in pairs(selected_notes) do
+    local note = self.notes[idx]
+    if note then
+      local current_row = self:get_row_for_pitch(note.pitch)
+      if current_row then
+        table.insert(notes_to_move, {
+          idx = idx,
+          pitch = note.pitch,
+          start = note.start,
+          length = note.length,
+          vel = note.vel,
+          muted = note.muted,
+          new_row = current_row + row_delta,
+        })
+      end
+    end
+  end
+
+  -- Sort by index descending for safe removal
+  table.sort(notes_to_move, function(a, b) return a.idx > b.idx end)
+
+  -- Remove old notes
+  for _, data in ipairs(notes_to_move) do
+    table.remove(self.notes, data.idx)
+  end
+
+  -- Add notes at new positions, build new selection
+  local new_selection = {}
+  for _, data in ipairs(notes_to_move) do
+    local new_pitch = self:get_pitch_for_row(data.new_row)
+    local new_start = data.start + time_delta
+
+    -- Only add if valid position
+    if new_pitch and new_start >= 0 then
+      local new_idx = self:add_note(new_pitch, new_start, data.length, data.vel, data.muted)
+      new_selection[new_idx] = true
+    end
+  end
+
+  return new_selection
+end
+
+-- Duplicate selected notes by row/col delta
+-- Returns new selection table with duplicated note indices
+function Pattern:duplicate_notes(selected_notes, row_delta, col_delta)
+  local time_delta = col_delta * self.grid_division
+  local new_selection = {}
+
+  for idx, _ in pairs(selected_notes) do
+    local note = self.notes[idx]
+    if note then
+      local current_row = self:get_row_for_pitch(note.pitch)
+      if current_row then
+        local new_row = current_row + row_delta
+        local new_pitch = self:get_pitch_for_row(new_row)
+        local new_start = note.start + time_delta
+
+        -- Only add if valid position
+        if new_pitch and new_start >= 0 then
+          local new_idx = self:add_note(new_pitch, new_start, note.length, note.vel, note.muted)
+          new_selection[new_idx] = true
+        end
+      end
+    end
+  end
+
+  return new_selection
+end
+
 -- Clone pattern
 function Pattern:clone(new_name)
   local copy = Pattern.new(new_name or (self.name .. " (copy)"), self.length_bars)

@@ -21,6 +21,49 @@ function MidiOutput.bars_to_ppq(bars, ppq_per_quarter)
   return bars * 4 * ppq_per_quarter
 end
 
+-- Convert PPQ to bars
+function MidiOutput.ppq_to_bars(ppq_pos, ppq_per_quarter)
+  return ppq_pos / (4 * ppq_per_quarter)
+end
+
+-- Get source loop length in bars from MIDI take
+-- Looks for our end marker CC#119, or falls back to last event
+function MidiOutput.get_source_length_bars(take)
+  if not take then return nil end
+
+  local ppq = MidiOutput.get_ppq(take)
+  local _, _, cc_count = r.MIDI_CountEvts(take)
+
+  -- Look for end marker CC#119
+  for i = cc_count - 1, 0, -1 do
+    local _, _, _, ppqpos, chanmsg, _, cc_num, cc_val = r.MIDI_GetCC(take, i)
+    if chanmsg == 0xB0 and cc_num == 119 and cc_val == 127 then
+      -- Found our marker, source ends at this position + 1
+      return MidiOutput.ppq_to_bars(ppqpos + 1, ppq)
+    end
+  end
+
+  -- No marker found, use last event position
+  local _, note_count = r.MIDI_CountEvts(take)
+  local max_ppq = 0
+
+  for i = 0, note_count - 1 do
+    local _, _, _, _, endppq = r.MIDI_GetNote(take, i)
+    if endppq > max_ppq then max_ppq = endppq end
+  end
+
+  for i = 0, cc_count - 1 do
+    local _, _, _, ppqpos = r.MIDI_GetCC(take, i)
+    if ppqpos > max_ppq then max_ppq = ppqpos end
+  end
+
+  if max_ppq > 0 then
+    return MidiOutput.ppq_to_bars(max_ppq, ppq)
+  end
+
+  return nil
+end
+
 -- Print pattern to selected MIDI item
 function MidiOutput.print_to_item(pattern, take, mode)
   if not take then
@@ -35,11 +78,17 @@ function MidiOutput.print_to_item(pattern, take, mode)
   r.Undo_BeginBlock()
   r.MIDI_DisableSort(take)
 
-  -- Clear existing notes if replace mode
+  -- Clear existing events if replace mode
   if mode == "replace" then
+    -- Clear notes
     local _, note_count = r.MIDI_CountEvts(take)
     for i = note_count - 1, 0, -1 do
       r.MIDI_DeleteNote(take, i)
+    end
+    -- Clear CCs (including our end marker)
+    local _, _, cc_count = r.MIDI_CountEvts(take)
+    for i = cc_count - 1, 0, -1 do
+      r.MIDI_DeleteCC(take, i)
     end
   end
 
@@ -68,16 +117,21 @@ function MidiOutput.print_to_item(pattern, take, mode)
     end
   end
 
+  -- Add end marker CC at exact pattern end to define source loop length
+  -- Using CC#119 (undefined) with value 127 as marker
+  local end_ppq = MidiOutput.bars_to_ppq(pattern.length_bars, ppq) + append_offset
+  r.MIDI_InsertCC(take, false, false, end_ppq - 1, 0xB0, pattern.channel, 119, 127)
+
   r.MIDI_Sort(take)
 
-  -- Extend item if needed
+  -- Set item length (don't shrink if user extended it for multiple loops)
   local item = r.GetMediaItemTake_Item(take)
   local pattern_length_sec = pattern.length_bars * (4 * 60 / r.Master_GetTempo())
   local current_length = r.GetMediaItemInfo_Value(item, "D_LENGTH")
 
   if mode == "append" then
     r.SetMediaItemInfo_Value(item, "D_LENGTH", current_length + pattern_length_sec)
-  elseif pattern_length_sec > current_length then
+  elseif current_length < pattern_length_sec then
     r.SetMediaItemInfo_Value(item, "D_LENGTH", pattern_length_sec)
   end
 
@@ -133,7 +187,8 @@ function MidiOutput.get_selected_midi_take()
 end
 
 -- MIDI output mode: 0=VKB, 1=control/track input, 2=hardware output
-local MIDI_MODE = 1
+-- DO NOT CHANGE - mode 0 (VKB) is the only reliable mode for preview
+local MIDI_MODE = 0
 
 -- Preview note (trigger MIDI output)
 function MidiOutput.preview_note(pitch, vel, channel, duration_ms)

@@ -30,7 +30,7 @@ local PianoRoll = require('piano_roll')
 local StepSeq = require('step_seq')
 
 -- Initialize
-local ctx = r.ImGui_CreateContext('SideTrack Sketchpad')
+local ctx = r.ImGui_CreateContext('SideTrack', r.ImGui_ConfigFlags_DockingEnable())
 State.ctx = ctx
 State.init()
 
@@ -42,21 +42,30 @@ local function main()
   -- Sync playhead to REAPER transport
   State.update_playback()
 
+  -- Sync pattern length with selected MIDI item
+  State.sync_with_midi_item()
+
   local pattern = State.get_pattern()
 
   r.ImGui_SetNextWindowSize(ctx, 700, 500, r.ImGui_Cond_FirstUseEver())
-  local visible, open = r.ImGui_Begin(ctx, 'SideTrack Sketchpad', true)
+  local visible, open = r.ImGui_Begin(ctx, 'SideTrack', true)
 
   if visible then
     -- Header row
     r.ImGui_SetNextItemWidth(ctx, 150)
     local changed, new_name = r.ImGui_InputText(ctx, "##name", pattern.name)
-    if changed then pattern.name = new_name end
+    if changed then
+      pattern.name = new_name
+      State.update_clip_name()
+    end
 
     r.ImGui_SameLine(ctx)
     r.ImGui_SetNextItemWidth(ctx, 60)
     local changed_len, new_len = r.ImGui_DragInt(ctx, "Bars", pattern.length_bars, 0.1, 1, 16)
-    if changed_len then pattern.length_bars = new_len end
+    if changed_len then
+      pattern.length_bars = new_len
+      State.sync_to_midi_item()
+    end
 
     r.ImGui_SameLine(ctx)
     r.ImGui_SetNextItemWidth(ctx, 80)
@@ -78,6 +87,29 @@ local function main()
     r.ImGui_SameLine(ctx)
     r.ImGui_Text(ctx, string.format("Notes: %d", #pattern.notes))
 
+    r.ImGui_SameLine(ctx)
+    r.ImGui_Text(ctx, "|")
+    r.ImGui_SameLine(ctx)
+
+    -- Link controls
+    if State.linked_take then
+      if State.is_sidetrack_clip() then
+        r.ImGui_TextColored(ctx, 0x88FF88FF, "ST Clip")
+      else
+        r.ImGui_TextColored(ctx, 0xFFAA44FF, "Linked")
+      end
+      r.ImGui_SameLine(ctx)
+      if r.ImGui_SmallButton(ctx, "Unlink") then
+        State.linked_take = nil
+      end
+    else
+      r.ImGui_TextColored(ctx, 0x888888FF, "No clip")
+      r.ImGui_SameLine(ctx)
+      if r.ImGui_SmallButton(ctx, "Create") then
+        State.create_clip()
+      end
+    end
+
     r.ImGui_Spacing(ctx)
     r.ImGui_Separator(ctx)
     r.ImGui_Spacing(ctx)
@@ -90,7 +122,10 @@ local function main()
     if r.ImGui_Button(ctx, "Steps", 60, 0) then State.view = "steps" end
 
     r.ImGui_SameLine(ctx, r.ImGui_GetContentRegionAvail(ctx) - 60)
-    if r.ImGui_Button(ctx, "Clear", 50, 0) then pattern:clear() end
+    if r.ImGui_Button(ctx, "Clear", 50, 0) then
+      pattern:clear()
+      State.sync_to_midi_item()
+    end
 
     r.ImGui_Spacing(ctx)
 
@@ -135,8 +170,9 @@ local function main()
       end
     end
 
-    r.ImGui_End(ctx)
   end
+
+  r.ImGui_End(ctx)
 
   if open then
     r.defer(main)
